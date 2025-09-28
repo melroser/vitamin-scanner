@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { motion } from 'framer-motion'
 import { ArrowLeft, CheckCircle, AlertTriangle, XCircle, Scan } from 'lucide-react'
@@ -16,7 +16,7 @@ interface VitaminResult {
   statusText: string
 }
 
-export default function ResultsPage() {
+function ResultsContent() {
   const [results, setResults] = useState<VitaminResult[]>([])
   const [productName, setProductName] = useState('')
   const [overallStatus, setOverallStatus] = useState<'good' | 'caution' | 'poor'>('good')
@@ -163,7 +163,7 @@ export default function ResultsPage() {
             </div>
           </Card>
         )}
-
+ 
         <Button 
           onClick={() => router.push('/scan')} 
           className="w-full" 
@@ -174,5 +174,22 @@ export default function ResultsPage() {
         </Button>
       </motion.div>
     </div>
+  )
+}
+
+export default function ResultsPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex items-center justify-center min-h-[50vh]">
+          <div className="text-center space-y-2">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+            <p className="text-gray-600">Loading results...</p>
+          </div>
+        </div>
+      }
+    >
+      <ResultsContent />
+    </Suspense>
   )
 }
