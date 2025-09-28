@@ -37,3 +37,6 @@ lerna-debug.log*
 # Cache
 .eslintcache
 .turbo/
+
+# Local Netlify folder
+.netlify

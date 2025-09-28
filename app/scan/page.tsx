@@ -3,17 +3,22 @@
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { motion } from 'framer-motion'
-import { ArrowLeft, Camera, Search } from 'lucide-react'
+import { ArrowLeft, Camera, Search, Upload } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card } from '@/components/ui/card'
 import { scanBarcode } from '@/lib/scanner'
 
+
 export default function ScanPage() {
   const [isScanning, setIsScanning] = useState(false)
+  const [isParsing, setIsParsing] = useState(false)
   const [manualSearch, setManualSearch] = useState('')
+    const [previewSrc, setPreviewSrc] = useState<string | null>(null)
+
   const [error, setError] = useState('')
   const videoRef = useRef<HTMLVideoElement>(null)
+  const fileRef = useRef<HTMLInputElement>(null)
   const router = useRouter()
 
   useEffect(() => {
@@ -62,6 +67,86 @@ export default function ScanPage() {
       router.push(`/results?search=${encodeURIComponent(manualSearch)}`)
     }
   }
+
+// --- Helpers: file -> dataURL and lossy downscale to keep payloads tiny ---
+const fileToDataURL = (file: File): Promise<string> =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result as string)
+    reader.onerror = reject
+    reader.readAsDataURL(file)
+  })
+
+/**
+ * Downscale a data URL (PNG/JPEG/WebP) and re-encode as JPEG to shrink size.
+ * @param dataUrl input image as data URL
+ * @param maxDim  longest side target (px)
+ * @param quality JPEG quality 0..1
+ * @returns data URL (image/jpeg)
+ */
+async function compressDataURL(
+  dataUrl: string,
+  maxDim = 1600,
+  quality = 0.85
+): Promise<string> {
+  const img = new Image()
+  img.decoding = 'async'
+  img.src = dataUrl
+
+  // Safari fallback: use onload instead of img.decode()
+  await new Promise<void>((resolve, reject) => {
+    img.onload = () => resolve()
+    img.onerror = (e) => reject(e)
+  })
+
+  let { width, height } = img
+  if (Math.max(width, height) > maxDim) {
+    const scale = maxDim / Math.max(width, height)
+    width = Math.round(width * scale)
+    height = Math.round(height * scale)
+  }
+
+  const canvas = document.createElement('canvas')
+  canvas.width = width
+  canvas.height = height
+  const ctx = canvas.getContext('2d')!
+  ctx.drawImage(img, 0, 0, width, height)
+
+  // Force JPEG for best size; labels are mostly text so 0.75–0.9 is fine
+  return canvas.toDataURL('image/jpeg', quality)
+}
+
+
+  async function onImageChosen(file: File) {
+  try {
+    setError('')
+    setIsParsing(true)
+    const raw = await fileToDataURL(file)
+    const dataUrl = await compressDataURL(raw)
+    setPreviewSrc(dataUrl)
+
+    const res = await fetch('/.netlify/functions/read-label', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ imageBase64: dataUrl })
+    })
+    if (!res.ok) throw new Error(`Parse failed: ${res.status}`)
+    const payload = await res.json()
+
+    // store vitamins in sessionStorage under a random key
+    const vitaminsId = crypto.randomUUID()
+    sessionStorage.setItem(`vitamins:${vitaminsId}`, JSON.stringify(payload.vitamins))
+
+    // now navigate — include whatever else you already pass (e.g., barcode)
+    router.push(`/results?vitaminsId=${vitaminsId}`)
+  } catch (e: any) {
+    console.error(e)
+    setError(e?.message || 'Could not parse image')
+  } finally {
+    setIsParsing(false)
+  }
+}
+
 
   return (
     <div className="space-y-6">
@@ -121,6 +206,46 @@ export default function ScanPage() {
             {error && (
               <p className="text-red-600 text-sm">{error}</p>
             )}
+          </div>
+        </Card>
+
+        {/* NEW: Upload Nutrition Facts (optional) */}
+        <Card className="p-6">
+          <div className="space-y-4">
+            <h2 className="text-lg font-semibold">Upload Nutrition Facts (optional)</h2>
+            <div className="space-y-3">
+              <input
+                ref={fileRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                onChange={(e) => {
+                  const f = e.target.files?.[0]
+                  if (f) onImageChosen(f)
+                }}
+                className="hidden"
+              />
+              <Button
+                type="button"
+                className="w-full"
+                onClick={() => fileRef.current?.click()}
+                disabled={isParsing}
+              >
+                <Upload className="w-4 h-4 mr-2" />
+                {isParsing ? 'Reading label…' : 'Upload Label Image'}
+              </Button>
+              {previewSrc && (
+                <img
+                  src={previewSrc}
+                  alt="Preview"
+                  className="mt-2 max-h-64 rounded border border-gray-200"
+                />
+              )}
+              <p className="text-xs text-gray-500">
+                Tip: crop to the Nutrition Facts panel for best results.
+              </p>
+            </div>
+            {error && <p className="text-red-600 text-sm">{error}</p>}
           </div>
         </Card>
 

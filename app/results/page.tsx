@@ -16,78 +16,95 @@ interface VitaminResult {
   statusText: string
 }
 
+type Product = { name: string; vitamins: Record<string, string> }
+
+// Template used when we only have OCR vitamins
+const PRODUCT_TEMPLATE: Record<string, string> = {
+  'Vitamin A': '3500 IU',
+  'Molybdenum': '50 mcg'
+}
+
 function ResultsContent() {
-  const [results, setResults] = useState<VitaminResult[]>([])
-  const [productName, setProductName] = useState('')
-  const [overallStatus, setOverallStatus] = useState<'good' | 'caution' | 'poor'>('good')
-  const [loading, setLoading] = useState(true)
   const router = useRouter()
   const searchParams = useSearchParams()
 
+  const [vitamins, setVitamins] = useState<Record<string, string> | null>(null)
+  const [productName, setProductName] = useState('')
+  const [results, setResults] = useState<VitaminResult[]>([])
+  const [overallStatus, setOverallStatus] = useState<'good' | 'caution' | 'poor'>('good')
+  const [loading, setLoading] = useState(true)
+
+  // 1) Load OCR vitamins from sessionStorage
   useEffect(() => {
+    const vitaminsId = searchParams.get('vitaminsId')
+    if (!vitaminsId) { setVitamins(null); return }
+    const raw = sessionStorage.getItem(`vitamins:${vitaminsId}`)
+    setVitamins(raw ? JSON.parse(raw) : null)
+  }, [searchParams])
+
+  // 2) Build product + compute results whenever params or vitamins change
+  useEffect(() => {
+    const profile = localStorage.getItem('vitaminProfile')
+    if (!profile) { router.push('/profile'); return }
+    const userProfile = JSON.parse(profile)
+
     const barcode = searchParams.get('barcode')
     const search = searchParams.get('search')
-    const profile = localStorage.getItem('vitaminProfile')
 
-    if (!profile) {
-      router.push('/profile')
-      return
+    let base: Product | null = null
+    if (barcode) base = getProductData(barcode)
+    else if (search) base = getProductData(search, 'name')
+
+    // If no DB product but OCR vitamins exist, start from template
+    if (!base && vitamins) {
+      base = { name: 'Unknown', vitamins: { ...PRODUCT_TEMPLATE } }
     }
 
-    const userProfile = JSON.parse(profile)
-    let product = null
-
-    if (barcode) {
-      product = getProductData(barcode)
-    } else if (search) {
-      product = getProductData(search, 'name')
+    // Merge OCR vitamins on top (OCR overrides)
+    if (base && vitamins) {
+      base = {
+        name: base.name || 'Unknown',
+        vitamins: { ...base.vitamins, ...vitamins }
+      }
     }
 
-    if (product) {
-      setProductName(product.name)
+    setProductName(base?.name ?? (barcode || search ? 'Product not found' : 'Unknown'))
+
+    if (base) {
       const recommendations = getRecommendations(userProfile)
-      const comparison = compareVitamins(product.vitamins, recommendations)
+      const comparison = compareVitamins(base.vitamins, recommendations)
       setResults(comparison)
-      
-      // Calculate overall status
+
       const lowCount = comparison.filter(v => v.status === 'low').length
       const highCount = comparison.filter(v => v.status === 'high').length
-      
-      if (highCount > 0) {
-        setOverallStatus('caution')
-      } else if (lowCount > 2) {
-        setOverallStatus('poor')
-      } else {
-        setOverallStatus('good')
-      }
+      setOverallStatus(highCount > 0 ? 'caution' : lowCount > 2 ? 'poor' : 'good')
     } else {
-      setProductName('Product not found')
+      setResults([])
+      setOverallStatus('good')
     }
 
     setLoading(false)
-  }, [searchParams, router])
+  }, [searchParams, vitamins, router])
+
+  // Optional: inspect OCR vitamins
+  useEffect(() => {
+    if (vitamins) console.log('Vitamins (from results):', vitamins)
+  }, [vitamins])
 
   const getStatusIcon = (status: string) => {
     switch (status) {
-      case 'good':
-        return <CheckCircle className="w-5 h-5 text-green-600" />
-      case 'low':
-        return <AlertTriangle className="w-5 h-5 text-yellow-600" />
-      case 'high':
-        return <XCircle className="w-5 h-5 text-red-600" />
-      default:
-        return null
+      case 'good': return <CheckCircle className="w-5 h-5 text-green-600" />
+      case 'low':  return <AlertTriangle className="w-5 h-5 text-yellow-600" />
+      case 'high': return <XCircle className="w-5 h-5 text-red-600" />
+      default:     return null
     }
   }
 
   const getOverallMessage = () => {
     switch (overallStatus) {
-      case 'good':
-        return 'This supplement is a good match for your needs'
-      case 'caution':
-        return 'Caution: Some vitamins exceed recommended levels'
-      case 'poor':
-        return 'This supplement may not meet your nutritional needs'
+      case 'good':    return 'This supplement is a good match for your needs'
+      case 'caution': return 'Caution: Some vitamins exceed recommended levels'
+      case 'poor':    return 'This supplement may not meet your nutritional needs'
     }
   }
 
@@ -105,11 +122,7 @@ function ResultsContent() {
   return (
     <div className="space-y-6">
       <div className="flex items-center space-x-3">
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => router.back()}
-        >
+        <Button variant="ghost" size="sm" onClick={() => router.back()}>
           <ArrowLeft className="w-4 h-4" />
         </Button>
         <h1 className="text-2xl font-bold">Results</h1>
@@ -123,11 +136,15 @@ function ResultsContent() {
       >
         <Card className="p-6">
           <h2 className="text-xl font-semibold mb-2">{productName}</h2>
-          <div className={`p-3 rounded-lg ${
-            overallStatus === 'good' ? 'bg-green-50 text-green-800' :
-            overallStatus === 'caution' ? 'bg-yellow-50 text-yellow-800' :
-            'bg-red-50 text-red-800'
-          }`}>
+          <div
+            className={`p-3 rounded-lg ${
+              overallStatus === 'good'
+                ? 'bg-green-50 text-green-800'
+                : overallStatus === 'caution'
+                ? 'bg-yellow-50 text-yellow-800'
+                : 'bg-red-50 text-red-800'
+            }`}
+          >
             <p className="font-medium">{getOverallMessage()}</p>
           </div>
         </Card>
@@ -150,11 +167,15 @@ function ResultsContent() {
                     <p className="text-sm text-gray-600">
                       Product: {vitamin.productAmount} | You need: {vitamin.recommendedAmount}
                     </p>
-                    <p className={`text-sm font-medium ${
-                      vitamin.status === 'good' ? 'text-green-600' :
-                      vitamin.status === 'low' ? 'text-yellow-600' :
-                      'text-red-600'
-                    }`}>
+                    <p
+                      className={`text-sm font-medium ${
+                        vitamin.status === 'good'
+                          ? 'text-green-600'
+                          : vitamin.status === 'low'
+                          ? 'text-yellow-600'
+                          : 'text-red-600'
+                      }`}
+                    >
                       {vitamin.statusText}
                     </p>
                   </div>
@@ -163,12 +184,8 @@ function ResultsContent() {
             </div>
           </Card>
         )}
- 
-        <Button 
-          onClick={() => router.push('/scan')} 
-          className="w-full" 
-          size="lg"
-        >
+
+        <Button onClick={() => router.push('/scan')} className="w-full" size="lg">
           <Scan className="w-4 h-4 mr-2" />
           Scan Another Product
         </Button>
