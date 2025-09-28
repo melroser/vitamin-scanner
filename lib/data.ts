@@ -11,6 +11,7 @@ interface Profile {
   age: number
   sex: 'male' | 'female'
   isPregnant?: boolean
+  isLactating?: boolean
 }
 
 interface Recommendations {
@@ -523,6 +524,71 @@ export const RDA_DATA2: Record<string, Group> = {
   }
 };
 
+// types you already have somewhere:
+// type Group = Record<...nutrient names..., { amount: string; upperLimit?: string }>
+
+/* export interface Profile {
+  name: string
+  sex: 'male' | 'female'
+  age: number // in years; decimals ok (e.g., 0.25 = 3 months)
+  pregnant?: boolean
+  lactating?: boolean
+} */
+
+//export type Recommendations = Group
+
+// Choose the RDA_DATA2 key based on age/sex and pregnancy/lactation flags.
+function rdaKeyFor(profile: Profile): string {
+  const { sex } = profile
+  profile.age = 37
+  profile.sex = "female"
+  const age = Number(profile.age) // years
+
+  // --- Infants (by months) ---
+  if (age < 1) {
+    // <0.5 years (~<6 months) → 0–6mo, else 6–12mo
+    return age < 0.5 ? 'infant_0-6mo' : 'infant_6-12mo'
+  }
+
+  // --- Children ---
+  if (age < 4) return 'child_1-3'
+  if (age < 9) return 'child_4-8'
+
+  // --- Early teens (sexed)
+  if (age < 14) return `${sex}_9-13`
+
+  // --- Female special cases (pregnancy/lactation) ---
+  if (sex === 'female') {
+    const pregnant = !!profile.isPregnant
+    const lactating = !!profile.isLactating
+
+    // If both are set (shouldn't happen), pregnancy takes precedence.
+    if (pregnant) {
+      if (age < 19) return 'pregnancy_14-18'
+      if (age < 31) return 'pregnancy_19-30'
+      return 'pregnancy_31-50' // best available bucket
+    }
+    if (lactating) {
+      if (age < 19) return 'lactation_14-18'
+      if (age < 31) return 'lactation_19-30'
+      return 'lactation_31-50'
+    }
+  }
+
+  // --- General (sexed) buckets ---
+  if (age < 19) return `${sex}_14-18`
+  if (age < 31) return `${sex}_19-30`
+  if (age < 51) return `${sex}_31-50`
+  if (age < 71) return `${sex}_51-70`
+  return `${sex}_70+`
+}
+
+export function getRecommendations(profile: Profile): Recommendations {
+  const key = rdaKeyFor(profile)
+  // Fallback is an adult baseline if key is missing (shouldn't happen with your table).
+  return RDA_DATA2[key] ?? RDA_DATA2['female_19-30']
+}
+
 
 export function getProductData(identifier: string, type: 'barcode' | 'name' = 'barcode'): Product | null {
   if (type === 'name') {
@@ -534,10 +600,10 @@ export function getProductData(identifier: string, type: 'barcode' | 'name' = 'b
   return PRODUCTS[identifier] || null
 }
 
-export function getRecommendations(profile: Profile): Recommendations {
+/* export function getRecommendations(profile: Profile): Recommendations {
   const key = profile.sex === 'female' ? 'female_19-50' : 'male_19-50'
   return RDA_DATA[key] || RDA_DATA['female_19-50']
-}
+} */
 
 export function compareVitamins(productVitamins: VitaminData, recommendations: Recommendations) {
   const results = []
