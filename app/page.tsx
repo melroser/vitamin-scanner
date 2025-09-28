@@ -38,7 +38,7 @@ export default function HomePage() {
           </p>
         </div>
 
-        <div className="space-y-3 w-full max-w-xs">
+        <div className="space-y-3 w-full max-w-xs mx-auto">
           {!hasProfile ? (
             <Button 
               onClick={() => router.push('/profile')}

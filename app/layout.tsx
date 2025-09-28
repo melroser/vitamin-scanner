@@ -7,7 +7,7 @@ const inter = Inter({ subsets: ['latin'] })
 export const metadata: Metadata = {
   title: 'Vitamin Scanner',
   description: 'Scan supplements and get personalized vitamin recommendations',
-  manifest: '/manifest.json',
+ // manifest: '/manifest.json',
 }
 
 export const viewport: Viewport = {

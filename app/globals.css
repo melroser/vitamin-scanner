@@ -2,15 +2,53 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Base tokens & global look */
 @layer base {
-  * {
-    @apply border-border;
-  }
+  * { @apply border-border; }
+
+  html { @apply scroll-smooth; }
+
+  /* Modern, app-wide background + text smoothing */
   body {
-    @apply bg-background text-foreground;
+    @apply min-h-screen bg-gradient-to-br from-sky-50 via-white to-indigo-50
+           text-foreground antialiased;
   }
+
+  /* Nicer default typography */
+  h1 { @apply text-4xl sm:text-5xl font-extrabold tracking-tight; }
+  h2 { @apply text-2xl sm:text-3xl font-bold; }
+  h3 { @apply text-xl sm:text-2xl font-semibold; }
+  p  { @apply text-slate-600; }
+
+  /* Improve focus visibility app-wide */
+  a, button, [role="button"], input, select, textarea {
+    @apply focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 focus-visible:outline-none;
+  }
+
+  /* Smooth reduced-motion users handled below */
 }
 
+/* App-level components (pure Tailwind) */
+@layer components {
+  /* “Glass card” utility you can apply to any wrapper if you want */
+  .glass {
+    @apply rounded-3xl border border-slate-200/70 bg-white/70 backdrop-blur-xl shadow-xl;
+  }
+
+  /* Primary & outline button polish (works with native <button> too) */
+  .btn-primary {
+    @apply rounded-xl bg-sky-600 text-white hover:bg-sky-700
+           shadow-lg shadow-sky-600/20 hover:shadow-sky-700/30 transition-all;
+  }
+  .btn-outline-modern {
+    @apply rounded-xl border-slate-300 text-slate-700 hover:bg-slate-50 transition-colors;
+  }
+
+  /* Optional width helper for center columns */
+  .container-narrow { @apply w-full max-w-xl sm:max-w-2xl mx-auto px-4 sm:px-6; }
+}
+
+/* Respect reduced motion */
 @media (prefers-reduced-motion: reduce) {
   * {
     animation-duration: 0.01ms !important;
